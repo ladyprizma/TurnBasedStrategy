@@ -1,0 +1,133 @@
+<style>
+.tile{
+	border: 1px solid gray;
+	display:inline-block;
+	width:50px;
+	height:50px;
+	cursor:pointer;
+}
+.unit{
+	width:50px;
+	height:50px;
+}
+.skpbtn{
+	border:none;
+	padding: 10px;
+	background: gray;
+	color:white;
+	cursor:pointer;
+}
+.chatbox{
+	border: 2px solid brown;
+	width:250px;
+	height:600px;
+	position:absolute;
+	left:0;
+}
+#oyunCanvas{
+	white-space: nowrap;
+	margin-left: 250px;
+}
+</style>
+<div class="chatbox">
+		<div style="height:90%;" id="msgcontent"></div>
+		<input type="text" placeholder="Type..." id="chatinput"><button class="skpbtn" onclick="sendChatMessage();">Send</button>
+	</div>
+<div id="oyunCanvas">
+</div>
+<center><button class="skpbtn" id="endturnbtn" onclick="endTurn();">Skip Turn</button></center>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+var socket = io();	
+var yukseklik = 15;
+var genislik = 30;
+var dogumNoktasi = getRndInteger(0,yukseklik*genislik);
+var tileCount = 0;
+var seciliTile = -1;
+var oyuncuHareket = 0;
+for(var i=0;i<yukseklik;i++){
+	for(var x=0;x<genislik;x++){
+		$("#oyunCanvas").append("<div class='tile' id='tile"+tileCount+"' unitplaced='0' x='"+x+"' y='"+i+"' onclick='tileClick("+tileCount+");'></div>");
+		tileCount += 1;
+	}
+	$("#oyunCanvas").append("<br/>");
+}
+
+function tileClick(tile){
+	if(oyuncuHareket > 0){
+	if(seciliTile < 0){
+	if($('#tile'+tile).attr("unitplaced") == "1"){
+		$('#tile'+tile).css('border','1px solid blue');
+		seciliTile = tile;
+	}
+	}else{
+		//Secilmiş Unite ile başka bloğa tıklanınca
+		if(Math.abs($("#tile"+tile).attr('x')-$("#tile"+seciliTile).attr('x')) < 2 && Math.abs($("#tile"+tile).attr('y')-$("#tile"+seciliTile).attr('y')) < 2){
+			$("#tile"+tile).append($('#tile'+seciliTile).find(".unit"));
+			$("#tile"+tile).attr('unitplaced','1');
+			$("#tile"+tile).css('background','green');
+			$('#tile'+seciliTile).css('border','1px solid gray');
+			$('#tile'+seciliTile).css('background','white');
+			$('#tile'+seciliTile).attr('unitplaced','0');
+			seciliTile = -1;
+			oyuncuHareket -= 1;
+			socket.emit('unitMove', {'unit':'unit'+socket.id,'tile': tile});
+		}
+	}
+	}
+}
+function getRndInteger(min, max) {
+  return Math.floor(Math.random() * (max - min + 1) ) + min;
+}
+function sendChatMessage(){
+	socket.emit('chatMsg', {'msg':$("#chatinput").val()});
+}
+function endTurn(){
+	socket.emit('endTurn', {});
+}
+function turnEnded(msg){
+if(msg == socket.id){
+		$("#endturnbtn").css("background","brown");
+		$("#endturnbtn").html("Skip Turn");
+		oyuncuHareket = 1;
+	}else{
+		$("#endturnbtn").html(msg+"'s Turn");
+		$("#endturnbtn").css("background","gray");
+	}
+}
+//socket bağlantıları
+socket.on('playerInit', function(msg) {
+    $("#tile"+msg.dogumNoktasi).append("<img src='static/warrior.png' class='unit'>");
+	$("#tile"+msg.dogumNoktasi).attr("unitplaced","1");
+	$("#tile"+msg.dogumNoktasi).css("background","green");
+	turnEnded(msg.turnName);
+  });
+socket.on('otherPlayerInit', function(msg) {
+    $("#tile"+msg.dogumNoktasi).append("<img src='static/warrior.png' playerid='"+msg.socket+"' id='unit"+msg.socket+"' class='unit'>");
+  });
+socket.on('otherPlayerInitonEnter', function(msg) {
+	for(var i=0;i<msg.oyuncular.length;i++){
+		if(msg.oyuncular[i].socket != socket.id){
+			$("#tile"+msg.oyuncular[i].dogumNoktasi).append("<img src='static/warrior.png' playerid='"+msg.oyuncular[i].socket+"' id='unit"+msg.oyuncular[i].socket+"' class='unit'>");
+		}
+	}
+  });
+socket.on('playerdisconnect', function(msg) {
+    $(".unit").each(function(i, obj) {
+		if($(obj).attr('playerid') == msg.socket){
+			$(obj).remove();
+		}
+	});
+  });
+socket.on('chatMsgR', function(msg) {
+    $("#msgcontent").append("<p>"+msg.playerid+" : "+msg.msg+"</p>");
+  });
+socket.on('endTurnR', function(msg) {
+    turnEnded(msg.playerid);
+  });
+socket.on('unitMoveR', function(msg) {
+    $("#tile"+msg.tile).append($("#"+msg.unit));
+	console.log(msg);
+  });
+</script>
